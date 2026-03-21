@@ -87,24 +87,32 @@
                     <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Interruptores de Hierarquia</label>
                     
                     <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Operacional 1 (Chefia)</span>
+                        <span class="text-xs font-bold text-slate-700">Operacional 0</span>
+                        <label class="switch"><input type="checkbox" class="level-switch" data-level="operacional_0" checked><span class="slider"></span></label>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                        <span class="text-xs font-bold text-slate-700">Operacional 1</span>
                         <label class="switch"><input type="checkbox" class="level-switch" data-level="operacional_1" checked><span class="slider"></span></label>
                     </div>
                     <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Tático 0 (Gerência)</span>
+                        <span class="text-xs font-bold text-slate-700">Tático 0</span>
                         <label class="switch"><input type="checkbox" class="level-switch" data-level="tatico_0" checked><span class="slider"></span></label>
                     </div>
                     <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Tático 1 (Diretoria)</span>
+                        <span class="text-xs font-bold text-slate-700">Tático 1</span>
                         <label class="switch"><input type="checkbox" class="level-switch" data-level="tatico_1" checked><span class="slider"></span></label>
                     </div>
                     <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Estratégico 0 (Secretaria)</span>
+                        <span class="text-xs font-bold text-slate-700">Estratégico 0</span>
                         <label class="switch"><input type="checkbox" class="level-switch" data-level="estrategico_0" checked><span class="slider"></span></label>
                     </div>
                     <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Estratégico 1 (Presidência)</span>
+                        <span class="text-xs font-bold text-slate-700">Estratégico 1</span>
                         <label class="switch"><input type="checkbox" class="level-switch" data-level="estrategico_1" checked><span class="slider"></span></label>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                        <span class="text-xs font-bold text-slate-700">Estratégico 2</span>
+                        <label class="switch"><input type="checkbox" class="level-switch" data-level="estrategico_2" checked><span class="slider"></span></label>
                     </div>
                 </div>
 
@@ -158,7 +166,8 @@
         };
 
         let workflowData = null;
-        const HIERARQUIA = ['operacional_1', 'tatico_0', 'tatico_1', 'estrategico_0', 'estrategico_1'];
+        // Ordem hierárquica completa baseada no JSON
+        const HIERARQUIA = ['operacional_0', 'operacional_1', 'tatico_0', 'tatico_1', 'estrategico_0', 'estrategico_1', 'estrategico_2'];
 
         const Engine = {
             getSwitchesState() {
@@ -168,80 +177,79 @@
             },
 
             mapToStatus(papel, acao) {
-                const map = {
-                    drh: { valida: 'EM_TRIAGEM_DRH', registra: 'AGUARDANDO_REGISTRO_DRH' },
-                    operacional_1: { da_ciencia: 'CIENCIA_CHEFIA_IMEDIATA', decide: 'AGUARDANDO_DECISAO_CHEFIA' },
-                    tatico_0: { da_ciencia: 'CIENCIA_TATICO_0', decide: 'AGUARDANDO_DECISAO_TATICO_0' },
-                    tatico_1: { da_ciencia: 'CIENCIA_TATICO_1', decide: 'AGUARDANDO_DECISAO_TATICO_1' },
-                    estrategico_0: { da_ciencia: 'CIENCIA_ESTRATEGICO_0', decide: 'AGUARDANDO_DECISAO_ESTRATEGICO_0' },
-                    estrategico_1: { da_ciencia: 'CIENCIA_ESTRATEGICO_1', decide: 'AGUARDANDO_DECISAO_ESTRATEGICO_1' }
-                };
-                return map[papel]?.[acao] || 'HOMOLOGADO_DRH';
+                // Mapeia papel e ação para um status legível
+                if (papel === 'drh') return `DRH_${acao.toUpperCase()}`;
+                return `${papel.toUpperCase()}_${acao.toUpperCase()}`;
             },
 
             resolverResponsavel(papelAlvo) {
                 const state = this.getSwitchesState();
-                const startPos = HIERARQUIA.indexOf(papelAlvo);
-                if (startPos === -1) return null;
+                
+                // Se o alvo for o DRH, ele é sempre o responsável
+                if (papelAlvo === 'drh') return 'drh';
 
+                const startPos = HIERARQUIA.indexOf(papelAlvo);
+                if (startPos === -1) return papelAlvo; // Se não estiver na hierarquia (ex: drh), retorna ele mesmo
+
+                // Procura o próximo gestor ativo na hierarquia a partir do alvo
                 for (let i = startPos; i < HIERARQUIA.length; i++) {
                     if (state[HIERARQUIA[i]]) return HIERARQUIA[i];
                 }
                 return null;
             },
 
-            getNextStatus(processo, currentStatus) {
+            getNextStatus(processo, currentEtapaIdx) {
                 const etapas = processo.etapas;
-                let encontrouAtual = (currentStatus === 'SOLICITADO');
+                const nextIdx = currentEtapaIdx + 1;
 
-                for (let i = 0; i < etapas.length; i++) {
-                    const etapa = etapas[i];
-                    const statusComparacao = this.mapToStatus(etapa.papel, etapa.acao);
+                if (nextIdx >= etapas.length) return null; // Fim do fluxo
 
-                    if (encontrouAtual) {
-                        const papelAlvo = etapa.papel;
-                        const acao = etapa.acao;
+                const etapa = etapas[nextIdx];
+                const papelAlvo = etapa.papel;
+                const acao = etapa.acao;
 
-                        if (papelAlvo !== 'drh') {
-                            const respAtual = this.resolverResponsavel(papelAlvo);
-                            if (!respAtual) throw new Error(`Não há gestores ativos para assumir o nível '${papelAlvo}' ou superiores.`);
-
-                            if (acao === 'da_ciencia') {
-                                let proximaDecisao = null;
-                                for (let j = i + 1; j < etapas.length; j++) {
-                                    if (etapas[j].acao === 'decide') { proximaDecisao = etapas[j]; break; }
-                                }
-                                if (proximaDecisao) {
-                                    const respDecisao = this.resolverResponsavel(proximaDecisao.papel);
-                                    if (respDecisao === respAtual) continue; 
-                                }
-                            }
+                // Se o papel não for DRH, verifica quem assume
+                if (papelAlvo !== 'drh') {
+                    const respAtual = this.resolverResponsavel(papelAlvo);
+                    if (!respAtual) throw new Error(`Não há gestores ativos para assumir o nível '${papelAlvo}' ou superiores.`);
+                    
+                    // Lógica de supressão: se a ação for 'da_ciencia' e o mesmo gestor 'decide' na próxima etapa, pula a ciência
+                    if (acao === 'da_ciencia') {
+                        const proximaDecisao = etapas.slice(nextIdx + 1).find(e => e.acao === 'decide');
+                        if (proximaDecisao && this.resolverResponsavel(proximaDecisao.papel) === respAtual) {
+                            return this.getNextStatus(processo, nextIdx);
                         }
-                        return statusComparacao;
                     }
-
-                    if (statusComparacao === currentStatus) encontrouAtual = true;
                 }
-                return 'HOMOLOGADO_DRH';
+
+                return { idx: nextIdx, status: this.mapToStatus(papelAlvo, acao) };
             }
         };
 
         UI.jsonInput.onchange = (e) => {
             const reader = new FileReader();
             reader.onload = (ev) => {
-                workflowData = JSON.parse(ev.target.result);
-                UI.processSelect.innerHTML = '<option value="">Selecione um processo...</option>';
-                workflowData.processos.forEach(p => {
-                    const opt = document.createElement('option');
-                    opt.value = p.id; opt.textContent = p.id;
-                    UI.processSelect.appendChild(opt);
-                });
-                renderCircuit();
+                try {
+                    // Adaptado para ler array direto ou objeto com .processos
+                    const raw = JSON.parse(ev.target.result);
+                    workflowData = Array.isArray(raw) ? raw : (raw.processos || []);
+                    
+                    UI.processSelect.innerHTML = '<option value="">Selecione um processo...</option>';
+                    workflowData.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p.id; 
+                        opt.textContent = `${p.id} - ${p.processo}`;
+                        UI.processSelect.appendChild(opt);
+                    });
+                    renderCircuit();
+                } catch (err) {
+                    alert("Erro ao ler JSON: " + err.message);
+                }
             };
             reader.readAsText(e.target.files[0]);
         };
 
-        function renderCircuit(startFrom = 'SOLICITADO') {
+        function renderCircuit(activeIndex = 0) {
             const procId = UI.processSelect.value;
             if (!workflowData || !procId) return;
 
@@ -250,29 +258,33 @@
             UI.statusBadge.textContent = 'Ativo';
             UI.statusBadge.classList.replace('text-slate-400', 'text-green-600');
 
-            const processo = workflowData.processos.find(p => p.id === procId);
-            
-            addNode('START', 'SOLICITADO', 'Ponto inicial de submissão.', startFrom === 'SOLICITADO');
+            const processo = workflowData.find(p => String(p.id) === String(procId));
+            if (!processo) return;
 
-            let current = 'SOLICITADO';
+            let currentIdx = -1;
             let safety = 0;
 
             try {
-                while (current !== 'HOMOLOGADO_DRH' && safety < 20) {
-                    const next = Engine.getNextStatus(processo, current);
-                    
-                    // Identificar o papel responsável por este status para exibir no card
-                    const etapaCorrespondente = processo.etapas.find(e => Engine.mapToStatus(e.papel, e.acao) === next);
-                    const respFinal = etapaCorrespondente.papel === 'drh' ? 'DRH' : Engine.resolverResponsavel(etapaCorrespondente.papel);
+                while (safety < 30) {
+                    const nextEtapa = Engine.getNextStatus(processo, currentIdx);
+                    if (!nextEtapa) {
+                        // Nó final (Homologação automática após a última etapa)
+                        addNode('FIM', 'HOMOLOGADO', 'Processo concluído com sucesso.', activeIndex === 999);
+                        break;
+                    }
+
+                    const etapa = processo.etapas[nextEtapa.idx];
+                    const respEfetivo = Engine.resolverResponsavel(etapa.papel);
 
                     addNode(
-                        etapaCorrespondente.acao.toUpperCase(), 
-                        next, 
-                        `Responsável: ${respFinal.toUpperCase()}`, 
-                        startFrom === next
+                        etapa.acao.toUpperCase(),
+                        nextEtapa.status.replace(/_/g, ' '),
+                        `Responsável: ${respEfetivo.toUpperCase()}`,
+                        activeIndex === nextEtapa.idx,
+                        nextEtapa.idx
                     );
-                    
-                    current = next;
+
+                    currentIdx = nextEtapa.idx;
                     safety++;
                 }
             } catch (err) {
@@ -283,22 +295,22 @@
             lucide.createIcons();
         }
 
-        function addNode(tag, title, desc, active) {
+        function addNode(tag, title, desc, active, idx) {
             const div = document.createElement('div');
             div.className = `circuit-line relative pl-8 pb-4 group`;
-            div.onclick = () => renderCircuit(title);
+            div.onclick = () => renderCircuit(idx);
             
-            const isHomologado = title === 'HOMOLOGADO_DRH';
-            const icon = isHomologado ? 'check-circle' : (active ? 'play-circle' : 'circle');
+            const isFim = tag === 'FIM';
+            const icon = isFim ? 'check-circle' : (active ? 'play-circle' : 'circle');
 
             div.innerHTML = `
-                <div class="node-dot ${active ? 'bg-slate-900 scale-125' : (isHomologado ? 'bg-green-500' : 'bg-slate-200')}"></div>
+                <div class="node-dot ${active ? 'bg-slate-900 scale-125' : (isFim ? 'bg-green-500' : 'bg-slate-200')}"></div>
                 <div class="p-5 rounded-2xl border transition-all cursor-pointer hover:translate-x-2 ${active ? 'node-active ring-4 ring-slate-100 border-slate-900' : 'border-slate-100 bg-white'}">
                     <div class="flex items-center justify-between mb-2">
                         <span class="text-[9px] font-black px-2 py-0.5 rounded bg-slate-100 text-slate-500 uppercase tracking-widest">${tag}</span>
                         <i data-lucide="${icon}" size="14" class="${active ? 'text-slate-900' : 'text-slate-300'}"></i>
                     </div>
-                    <h3 class="text-xs font-extrabold text-slate-900">${title.replace(/_/g, ' ')}</h3>
+                    <h3 class="text-xs font-extrabold text-slate-900">${title}</h3>
                     <p class="text-[10px] text-slate-400 mt-1 font-medium">${desc}</p>
                 </div>
             `;
@@ -311,4 +323,3 @@
     </script>
 </body>
 </html>
-
