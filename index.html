@@ -9,223 +9,251 @@
 <script src="https://unpkg.com/lucide@latest"></script>
 
 <style>
-body { font-family: Arial; }
+body { font-family: 'Inter', sans-serif; }
 
-.node { padding: 12px; margin: 6px; border: 1px solid #ccc; cursor: pointer; border-radius: 10px; }
-.node.active { border-color: #111; background: #f1f5f9; }
-.node.energy { background: #e0f2fe; border-color: #0284c7; }
-.error { color: red; }
+.circuit-line::before {
+    content: '';
+    position: absolute;
+    left: -20px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    border-left: 2px dashed #e2e8f0;
+}
+
+.node-dot {
+    position: absolute;
+    left: -26px;
+    top: 22px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+}
+
+.energy {
+    background: #38bdf8 !important;
+    transform: scale(1.3);
+}
+
+.node-active {
+    border-color: #1e293b;
+    background: #f8fafc;
+}
 </style>
 </head>
 
-<body class="p-6">
+<body class="bg-slate-100 min-h-screen p-6">
 
-<h2 class="font-bold mb-4">Simulador de Workflow ⚡</h2>
+<div class="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
 
-<input type="file" id="jsonInput" accept=".json"><br><br>
+<!-- CONTROLE -->
+<div class="lg:col-span-5 bg-white p-6 rounded-xl">
 
-<select id="processSelect">
-<option value="">Carregue o JSON</option>
+<input type="file" id="jsonInput" class="mb-4">
+
+<select id="processSelect" class="w-full p-2 border mb-4">
+<option>Carregue JSON</option>
 </select>
 
-<div class="mt-4">
-<label>Hierarquia:</label><br>
-<label><input type="checkbox" class="level" value="operacional_0" checked> operacional_0</label>
-<label><input type="checkbox" class="level" value="operacional_1" checked> operacional_1</label>
-<label><input type="checkbox" class="level" value="tatico_0" checked> tatico_0</label>
-<label><input type="checkbox" class="level" value="tatico_1" checked> tatico_1</label>
-<label><input type="checkbox" class="level" value="estrategico_0" checked> estrategico_0</label>
-<label><input type="checkbox" class="level" value="estrategico_1" checked> estrategico_1</label>
-<label><input type="checkbox" class="level" value="estrategico_2" checked> estrategico_2</label>
+<div id="switches" class="space-y-2"></div>
+
+<div id="errorDisplay" class="text-red-500 mt-4"></div>
+
 </div>
 
-<div id="errorDisplay" class="error mt-3"></div>
+<!-- VISUAL -->
+<div class="lg:col-span-7 bg-white p-6 rounded-xl">
 
-<div id="output" class="mt-4"></div>
+<div id="circuitOutput" class="relative ml-6 space-y-6"></div>
+
+</div>
+
+</div>
 
 <script>
 const UI = {
     jsonInput: document.getElementById('jsonInput'),
     processSelect: document.getElementById('processSelect'),
-    output: document.getElementById('output'),
-    error: document.getElementById('errorDisplay')
+    circuitOutput: document.getElementById('circuitOutput'),
+    error: document.getElementById('errorDisplay'),
+    switches: document.getElementById('switches')
 };
 
 let workflowData = null;
 
 const HIERARQUIA = [
-    'operacional_0','operacional_1','tatico_0','tatico_1',
-    'estrategico_0','estrategico_1','estrategico_2'
+ 'operacional_0','operacional_1',
+ 'tatico_0','tatico_1',
+ 'estrategico_0','estrategico_1','estrategico_2'
 ];
 
-function getHierarchyState() {
-    const state = {};
-    document.querySelectorAll('.level').forEach(el => {
-        state[el.value] = el.checked;
+// cria switches dinamicamente
+HIERARQUIA.forEach(nivel=>{
+    UI.switches.innerHTML += `
+    <label class="flex justify-between">
+        ${nivel}
+        <input type="checkbox" class="level" value="${nivel}" checked>
+    </label>`;
+});
+
+function getState(){
+    const s = {};
+    document.querySelectorAll('.level').forEach(el=>{
+        s[el.value]=el.checked;
     });
-    return state;
+    return s;
 }
 
 const Engine = {
 
-    mapToStatus(papel, acao) {
-        if (papel === 'drh') return `DRH_${acao.toUpperCase()}`;
-        return `${papel.toUpperCase()}_${acao.toUpperCase()}`;
-    },
+mapToStatus(p,a){
+    return p==='drh' ? `DRH_${a}` : `${p}_${a}`;
+},
 
-    resolverResponsavel(papel) {
-        if (papel === 'drh') return 'drh';
+resolverResponsavel(p){
+    if(p==='drh') return 'drh';
 
-        const state = getHierarchyState();
-        const pos = HIERARQUIA.indexOf(papel);
+    const state = getState();
+    const pos = HIERARQUIA.indexOf(p);
 
-        if (pos === -1) throw new Error(`Papel inválido: ${papel}`);
+    for(let i=pos;i<HIERARQUIA.length;i++){
+        if(state[HIERARQUIA[i]]) return HIERARQUIA[i];
+    }
+    return null;
+},
 
-        for (let i = pos; i < HIERARQUIA.length; i++) {
-            if (state[HIERARQUIA[i]]) return HIERARQUIA[i];
-        }
+getNext(processo,idx,depth=0){
 
-        return null;
-    },
+    if(depth>15) throw new Error("Loop");
 
-    getNextStatus(processo, idx, depth = 0) {
+    const nextIdx = idx+1;
+    if(nextIdx>=processo.etapas.length) return null;
 
-        if (depth > 15) throw new Error("Loop detectado");
+    const e = processo.etapas[nextIdx];
 
-        const etapas = processo.etapas;
-        const nextIdx = idx + 1;
+    if(e.papel!=='drh'){
+        const r = this.resolverResponsavel(e.papel);
+        if(!r) throw new Error(`Sem responsável ${e.papel}`);
 
-        if (nextIdx >= etapas.length) return null;
+        if(e.acao==='da_ciencia'){
+            const prox = processo.etapas.slice(nextIdx+1)
+                .find(x=>x.acao==='decide');
 
-        const etapa = etapas[nextIdx];
-        const papel = etapa.papel;
-        const acao = etapa.acao;
-
-        if (papel !== 'drh') {
-            const resp = this.resolverResponsavel(papel);
-            if (!resp) throw new Error(`Sem responsável para ${papel}`);
-
-            if (acao === 'da_ciencia') {
-                const prox = etapas.slice(nextIdx + 1).find(e => e.acao === 'decide');
-                if (prox && this.resolverResponsavel(prox.papel) === resp) {
-                    return this.getNextStatus(processo, nextIdx, depth + 1);
-                }
+            if(prox && this.resolverResponsavel(prox.papel)===r){
+                return this.getNext(processo,nextIdx,depth+1);
             }
         }
-
-        return {
-            idx: nextIdx,
-            status: this.mapToStatus(papel, acao)
-        };
     }
+
+    return {
+        idx: nextIdx,
+        status: this.mapToStatus(e.papel,e.acao),
+        etapa: e
+    };
+}
+
 };
 
-UI.jsonInput.onchange = (e) => {
-
-    const file = e.target.files[0];
-    if (!file) return;
-
+UI.jsonInput.onchange = e=>{
     const reader = new FileReader();
 
-    reader.onload = (ev) => {
-        try {
+    reader.onload = ev=>{
+        try{
             const raw = JSON.parse(ev.target.result);
+            workflowData = raw.processos || raw;
 
-            if (Array.isArray(raw)) {
-                workflowData = raw;
-            } else if (raw.processos && Array.isArray(raw.processos)) {
-                workflowData = raw.processos;
-            } else {
-                throw new Error("JSON inválido");
-            }
+            UI.processSelect.innerHTML = '<option>Selecione</option>';
 
-            UI.processSelect.innerHTML = '<option value="">Selecione</option>';
-
-            workflowData.forEach(p => {
-                if (!p.id) return;
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.processo || `Processo ${p.id}`;
-                UI.processSelect.appendChild(opt);
+            workflowData.forEach(p=>{
+                const o = document.createElement('option');
+                o.value = p.id;
+                o.textContent = p.processo || p.id;
+                UI.processSelect.appendChild(o);
             });
 
-            UI.error.textContent = '';
+            UI.error.textContent='';
 
-        } catch (err) {
-            workflowData = null;
+        }catch(err){
             UI.error.textContent = err.message;
         }
     };
 
-    reader.readAsText(file);
+    reader.readAsText(e.target.files[0]);
 };
 
-UI.processSelect.onchange = () => simular();
-document.querySelectorAll('.level').forEach(el => el.onchange = simular);
+UI.processSelect.onchange = simular;
+document.addEventListener('change', e=>{
+    if(e.target.classList.contains('level')) simular();
+});
 
-function simular() {
+function simular(){
 
     const id = UI.processSelect.value;
-    if (!id || !workflowData) return;
+    if(!id || !workflowData) return;
 
-    const proc = workflowData.find(p => String(p.id) === id);
+    const proc = workflowData.find(p=>String(p.id)===id);
 
-    UI.output.innerHTML = '';
+    UI.circuitOutput.innerHTML='';
+    UI.error.textContent='';
 
-    let idx = -1;
-    let safety = 0;
-    let nodes = [];
+    let idx=-1;
+    let nodes=[];
+    let safety=0;
 
-    try {
-        while (safety < 30) {
-            const next = Engine.getNextStatus(proc, idx);
+    try{
 
-            if (!next) {
-                nodes.push('FIM');
+        while(safety<30){
+            const n = Engine.getNext(proc,idx);
+            if(!n){
+                nodes.push({status:'FIM'});
                 break;
             }
-
-            nodes.push(next.status);
-            idx = next.idx;
+            nodes.push(n);
+            idx=n.idx;
             safety++;
         }
 
-        renderNodes(nodes);
+        render(nodes);
+        animate();
 
-    } catch (err) {
+    }catch(err){
         UI.error.textContent = err.message;
     }
 }
 
-function renderNodes(nodes) {
+function render(nodes){
 
-    UI.output.innerHTML = '';
+    UI.circuitOutput.innerHTML='';
 
-    nodes.forEach((n, i) => {
-        const div = document.createElement('div');
-        div.className = 'node';
-        div.textContent = n;
-        UI.output.appendChild(div);
+    nodes.forEach((n,i)=>{
+
+        const div=document.createElement('div');
+        div.className='circuit-line relative pl-8';
+
+        div.innerHTML=`
+        <div class="node-dot bg-slate-300"></div>
+        <div class="p-4 border rounded-lg">
+            ${n.status}
+        </div>`;
+
+        UI.circuitOutput.appendChild(div);
     });
-
-    animateEnergy();
 }
 
-function animateEnergy() {
-    const nodes = document.querySelectorAll('.node');
-    let i = 0;
+function animate(){
+    const dots=document.querySelectorAll('.node-dot');
+    let i=0;
 
-    function step() {
-        nodes.forEach(n => n.classList.remove('energy'));
-        if (nodes[i]) nodes[i].classList.add('energy');
+    function step(){
+        dots.forEach(d=>d.classList.remove('energy'));
+        if(dots[i]) dots[i].classList.add('energy');
         i++;
-        if (i < nodes.length) setTimeout(step, 300);
+        if(i<dots.length) setTimeout(step,250);
     }
 
     step();
 }
 
 </script>
-
 </body>
 </html>
