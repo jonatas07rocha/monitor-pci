@@ -3,15 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulador de Conformidade de Workflow v4.0</title>
+    <title>Simulador de Conformidade v4.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
+        .peer:checked ~ .peer-checked\:bg-slate-900 { background-color: #0f172a; }
     </style>
 </head>
 <body class="bg-slate-50">
@@ -19,17 +20,37 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
-        
-        // Aliases para ícones do Lucide
-        const { 
-            Zap, ShieldCheck, ShieldAlert, FileJson, Activity, 
-            UserCheck, ChevronRight, Settings2, Cpu, Layers, 
-            CheckCircle2, AlertCircle 
-        } = lucide;
 
-        const LucideIcon = ({ name, ...props }) => {
-            const Icon = lucide[name];
-            return Icon ? <Icon {...props} /> : null;
+        // Componente para renderizar ícones do Lucide no React via CDN
+        const Icon = ({ name, size = 20, className = "" }) => {
+            const containerRef = React.useRef(null);
+
+            useEffect(() => {
+                if (containerRef.current) {
+                    containerRef.current.innerHTML = '';
+                    const iconName = name.charAt(0).toLowerCase() + name.slice(1).replace(/([A-Z])/g, '-$1').toLowerCase();
+                    const svg = lucide.createIcons({
+                        icons: { [name]: lucide[name] },
+                        attrs: {
+                            width: size,
+                            height: size,
+                            class: className
+                        }
+                    });
+                    
+                    // Fallback manual se o createIcons falhar no contexto
+                    const iconSvg = lucide[name];
+                    if (iconSvg) {
+                        const element = document.createElement('div');
+                        element.innerHTML = iconSvg[2] || ''; 
+                        // Nota: A estrutura do Lucide CDN pode variar, esta é a forma mais segura:
+                        const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-${iconName} ${className}">${lucide[name]}</svg>`;
+                        containerRef.current.innerHTML = svgString;
+                    }
+                }
+            }, [name, size, className]);
+
+            return <div ref={containerRef} className="inline-block" />;
         };
 
         const HIERARQUIA_ORDEM = [
@@ -47,9 +68,7 @@
             const [simulationResult, setSimulationResult] = useState({ nodes: [], isValid: true, error: '' });
 
             const mapToStatus = (papel, acao) => {
-                if (papel === 'drh') {
-                    return acao === 'valida' ? 'EM_TRIAGEM_DRH' : 'AGUARDANDO_REGISTRO_DRH';
-                }
+                if (papel === 'drh') return acao === 'valida' ? 'EM_TRIAGEM_DRH' : 'AGUARDANDO_REGISTRO_DRH';
                 const map = {
                     'operacional_1': { 'da_ciencia': 'CIENCIA_CHEFIA_IMEDIATA', 'decide': 'AGUARDANDO_DECISAO_CHEFIA' },
                     'tatico_0': { 'da_ciencia': 'CIENCIA_TATICO_0', 'decide': 'AGUARDANDO_DECISAO_TATICO_0' },
@@ -64,7 +83,6 @@
                 if (papelAlvo === 'drh') return 'drh';
                 const pos = HIERARQUIA_ORDEM.indexOf(papelAlvo);
                 if (pos === -1) return null;
-
                 for (let i = pos; i < HIERARQUIA_ORDEM.length; i++) {
                     if (switches[HIERARQUIA_ORDEM[i]]) return HIERARQUIA_ORDEM[i];
                 }
@@ -88,7 +106,6 @@
 
             useEffect(() => {
                 if (!workflowData || !selectedProcessId) return;
-
                 const processoMatriz = workflowData.find(p => String(p.id) === selectedProcessId);
                 if (!processoMatriz) return;
 
@@ -103,26 +120,20 @@
                     for (let i = 0; i < etapas.length; i++) {
                         const etapa = etapas[i];
                         const respReal = resolverResponsavel(etapa.papel);
-
                         if (!respReal) {
                             isValid = false;
-                            throw new Error(`Circuito não existe na matriz: O nível '${etapa.papel}' é obrigatório para este processo e não possui responsável ativo ou superior para assumir.`);
+                            throw new Error(`Circuito interrompido: Nível '${etapa.papel}' sem substituto ativo.`);
                         }
-
                         let isSuprimido = false;
                         if (etapa.acao === 'da_ciencia') {
                             const proxDecide = etapas.slice(i + 1).find(e => e.acao === 'decide');
-                            if (proxDecide && resolverResponsavel(proxDecide.papel) === respReal) {
-                                isSuprimido = true;
-                            }
+                            if (proxDecide && resolverResponsavel(proxDecide.papel) === respReal) isSuprimido = true;
                         }
-
                         nodes.push({
                             status: mapToStatus(etapa.papel, etapa.acao),
                             responsavel: respReal,
                             acao: etapa.acao,
-                            suprimido: isSuprimido,
-                            papelOriginal: etapa.papel
+                            suprimido: isSuprimido
                         });
                     }
                     nodes.push({ status: 'HOMOLOGADO_DRH', responsavel: 'DRH', acao: 'CONCLUI', suprimido: false });
@@ -133,154 +144,91 @@
                 setSimulationResult({ nodes, isValid, error });
             }, [selectedProcessId, switches, workflowData]);
 
-            const uniqueProcesses = useMemo(() => {
-                if (!workflowData) return [];
-                return workflowData.map(p => ({ id: p.id, nome: p.processo || p.id }));
-            }, [workflowData]);
-
             return (
-                <div className="min-h-screen p-6 md:p-12 text-slate-900">
+                <div className="min-h-screen p-4 md:p-12 text-slate-900">
                     <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
                         
+                        {/* CONTROLES */}
                         <div className="lg:col-span-5 flex flex-col gap-6">
                             <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm">
                                 <div className="flex items-center gap-3 mb-8">
                                     <div className="p-2 bg-slate-900 text-white rounded-xl">
-                                        <Settings2 size={20} />
+                                        <Icon name="Settings2" size={20} />
                                     </div>
                                     <div>
-                                        <h2 className="text-lg font-extrabold uppercase tracking-tight">Mesa de Comando</h2>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Controle de Condutividade</p>
+                                        <h2 className="text-lg font-black uppercase">Mesa de Comando</h2>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Condutividade de Matriz</p>
                                     </div>
                                 </div>
 
                                 <div className="mb-6">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">1. Matriz Principal (JSON)</label>
                                     <input type="file" id="jsonUpload" className="hidden" accept=".json" onChange={handleFileUpload} />
-                                    <button 
-                                        onClick={() => document.getElementById('jsonUpload').click()}
-                                        className="w-full flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-2xl hover:bg-slate-50 hover:border-slate-400 transition-all text-slate-400 group"
-                                    >
-                                        <FileJson className="group-hover:text-slate-600 mb-2" />
-                                        <span className="text-xs font-bold uppercase group-hover:text-slate-600">Carregar Matriz</span>
+                                    <button onClick={() => document.getElementById('jsonUpload').click()} className="w-full flex flex-col items-center p-6 border-2 border-dashed border-slate-200 rounded-2xl hover:bg-slate-50 transition-all text-slate-400 group">
+                                        <Icon name="FileJson" className="group-hover:text-slate-600 mb-2" />
+                                        <span className="text-xs font-bold uppercase">Carregar JSON</span>
                                     </button>
                                 </div>
 
                                 <div className="mb-8">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">2. Selecionar Circuito</label>
-                                    <select 
-                                        value={selectedProcessId}
-                                        onChange={(e) => setSelectedProcessId(e.target.value)}
-                                        className="w-full p-4 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-slate-100 transition-all appearance-none"
-                                    >
-                                        <option value="">{workflowData ? 'Escolha o processo...' : 'Aguardando JSON...'}</option>
-                                        {uniqueProcesses.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                                    <select value={selectedProcessId} onChange={(e) => setSelectedProcessId(e.target.value)} className="w-full p-4 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700 outline-none">
+                                        <option value="">{workflowData ? 'Selecione o processo...' : 'Aguardando Matriz...'}</option>
+                                        {workflowData?.map(p => <option key={p.id} value={p.id}>{p.processo || p.id}</option>)}
                                     </select>
                                 </div>
 
-                                <div className="space-y-3">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">3. Simular Disponibilidade</label>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {HIERARQUIA_ORDEM.map(level => (
-                                            <div key={level} className="flex items-center justify-between p-3.5 bg-slate-50/50 rounded-xl border border-slate-100">
-                                                <div className="flex items-center gap-3">
-                                                    <Layers size={14} className="text-slate-400" />
-                                                    <span className="text-[11px] font-bold text-slate-600 uppercase">{level.replace('_', ' ')}</span>
+                                <div className="space-y-2">
+                                    {HIERARQUIA_ORDEM.map(level => (
+                                        <div key={level} className="flex items-center justify-between p-3 bg-slate-50/50 rounded-xl border border-slate-100">
+                                            <span className="text-[10px] font-bold text-slate-600 uppercase">{level.replace('_', ' ')}</span>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input type="checkbox" checked={switches[level]} onChange={() => setSwitches(s => ({ ...s, [level]: !s[level] }))} className="sr-only peer" />
+                                                <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:bg-slate-900 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {!simulationResult.isValid && (
+                                <div className="bg-red-50 border border-red-100 p-6 rounded-3xl flex gap-4">
+                                    <Icon name="ShieldAlert" className="text-red-600" />
+                                    <p className="text-xs text-red-700 font-bold">{simulationResult.error}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* VISUALIZAÇÃO */}
+                        <div className="lg:col-span-7">
+                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm min-h-[600px] relative overflow-hidden">
+                                <div className="flex items-center justify-between mb-10 relative z-10">
+                                    <h2 className="text-xl font-black uppercase italic">Projeção</h2>
+                                    <div className={`text-[10px] font-black px-4 py-1.5 rounded-full uppercase ${simulationResult.isValid ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
+                                        {simulationResult.isValid ? 'Circuito Ativo' : 'Curto-Circuito'}
+                                    </div>
+                                </div>
+
+                                <div className="relative">
+                                    <div className="absolute left-[20px] top-0 bottom-0 w-1 bg-slate-100 rounded-full overflow-hidden">
+                                        <div className={`w-full transition-all duration-1000 ${simulationResult.isValid ? 'bg-blue-500 shadow-[0_0_15px_blue]' : 'bg-red-500'}`} style={{ height: selectedProcessId ? '100%' : '0%' }} />
+                                    </div>
+
+                                    <div className="space-y-6">
+                                        {selectedProcessId && simulationResult.nodes.map((node, i) => (
+                                            <div key={i} className={`relative flex items-center gap-8 transition-opacity ${node.suprimido ? 'opacity-30' : 'opacity-100'}`}>
+                                                <div className={`w-10 h-10 rounded-full border-4 border-white flex items-center justify-center shadow-md z-10 ${node.suprimido ? 'bg-slate-300' : (simulationResult.isValid ? 'bg-blue-600' : 'bg-red-500')}`}>
+                                                    <Icon name={node.acao === 'CONCLUI' ? 'CheckCircle2' : node.acao === 'INICIA' ? 'Zap' : 'Cpu'} size={16} className="text-white" />
                                                 </div>
-                                                <label className="relative inline-flex items-center cursor-pointer">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={switches[level]} 
-                                                        onChange={() => setSwitches(s => ({ ...s, [level]: !s[level] }))}
-                                                        className="sr-only peer"
-                                                    />
-                                                    <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-900"></div>
-                                                </label>
+                                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex-grow">
+                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Status: {node.status}</p>
+                                                    <p className="text-[11px] font-black uppercase text-slate-800">{node.responsavel}</p>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             </div>
-
-                            {!simulationResult.isValid && (
-                                <div className="bg-red-50 border border-red-100 p-6 rounded-3xl flex gap-4 items-start">
-                                    <ShieldAlert className="text-red-600 shrink-0" />
-                                    <div>
-                                        <h4 className="text-xs font-black text-red-900 uppercase">Circuito Inválido!</h4>
-                                        <p className="text-xs text-red-700 mt-1 leading-relaxed font-medium">{simulationResult.error}</p>
-                                    </div>
-                                </div>
-                            )}
                         </div>
 
-                        <div className="lg:col-span-7">
-                            <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm min-h-[700px] flex flex-col relative overflow-hidden">
-                                <div className="flex items-center justify-between mb-12 relative z-10">
-                                    <div className="flex items-center gap-3">
-                                        <Activity className="text-slate-900" />
-                                        <h2 className="text-xl font-black uppercase tracking-tighter">Projeção da Matriz</h2>
-                                    </div>
-                                    <div className={`flex items-center gap-2 text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest ${simulationResult.isValid ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
-                                        {simulationResult.isValid ? <React.Fragment><ShieldCheck size={12} /> Circuito Íntegro</React.Fragment> : <React.Fragment><ShieldAlert size={12} /> Curto-Circuito</React.Fragment>}
-                                    </div>
-                                </div>
-
-                                <div className="relative flex-grow">
-                                    <div className="absolute left-[23px] top-0 bottom-0 w-1 bg-slate-100 rounded-full overflow-hidden">
-                                        <div 
-                                            className={`w-full transition-all duration-700 ease-in-out ${simulationResult.isValid ? 'bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]'}`}
-                                            style={{ height: selectedProcessId ? '100%' : '0%' }}
-                                        />
-                                    </div>
-
-                                    <div className="relative space-y-8">
-                                        {selectedProcessId ? (
-                                            simulationResult.nodes.map((node, i) => (
-                                                <div key={i} className={`relative flex items-start gap-10 group transition-all duration-500 ${node.suprimido ? 'opacity-30 grayscale' : 'opacity-100'}`}>
-                                                    <div className="relative mt-5 z-10">
-                                                        <div className={`w-12 h-12 rounded-full border-4 border-white flex items-center justify-center shadow-md transition-all ${
-                                                            node.suprimido ? 'bg-slate-200' : 
-                                                            (!simulationResult.isValid && i === simulationResult.nodes.length - 1 ? 'bg-red-500' : 'bg-blue-600')
-                                                        }`}>
-                                                            {node.acao === 'CONCLUI' ? <CheckCircle2 size={20} className="text-white" /> : 
-                                                            node.acao === 'INICIA' ? <Zap size={20} className="text-white" /> :
-                                                            <Cpu size={18} className="text-white" />}
-                                                        </div>
-                                                    </div>
-
-                                                    <div className={`flex-grow p-6 rounded-2xl border transition-all ${
-                                                        node.suprimido ? 'bg-slate-50 border-slate-100' : 
-                                                        (!simulationResult.isValid && i === simulationResult.nodes.length - 1 ? 'bg-red-50 border-red-200 shadow-lg' : 'bg-white border-slate-200 hover:shadow-xl')
-                                                    }`}>
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest ${node.suprimido ? 'bg-slate-200 text-slate-400' : 'bg-slate-900 text-white'}`}>
-                                                                {node.acao} {node.suprimido && '(SUPOSTA)'}
-                                                            </span>
-                                                            <span className="text-[10px] font-bold text-slate-300">PASSO {i + 1}</span>
-                                                        </div>
-                                                        <h3 className={`text-xs font-black uppercase tracking-tight ${node.suprimido ? 'text-slate-400' : 'text-slate-900'}`}>{node.status.replace(/_/g, ' ')}</h3>
-                                                        {!node.suprimido && (
-                                                            <div className="mt-4 flex items-center gap-3 border-t border-slate-50 pt-3">
-                                                                <UserCheck size={14} className={simulationResult.isValid ? 'text-blue-500' : 'text-red-500'} />
-                                                                <div className="flex flex-col">
-                                                                    <p className="text-[8px] font-bold text-slate-400 uppercase leading-none mb-1">Responsável na Matriz</p>
-                                                                    <p className="text-[10px] font-black text-slate-700 uppercase">{node.responsavel.replace('_', ' ')}</p>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <div className="flex flex-col items-center justify-center py-40 text-slate-300 opacity-30">
-                                                <Activity size={64} className="mb-4" />
-                                                <p className="text-sm font-bold uppercase tracking-widest">Aguardando Conexão com Matriz</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
             );
