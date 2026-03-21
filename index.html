@@ -1,325 +1,201 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SICOM - Simulador de Circuitos</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 44px;
-            height: 24px;
-        }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #cbd5e1;
-            transition: .3s;
-            border-radius: 24px;
-        }
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 18px; width: 18px;
-            left: 3px; bottom: 3px;
-            background-color: white;
-            transition: .3s;
-            border-radius: 50%;
-        }
-        input:checked + .slider { background-color: #1e293b; }
-        input:checked + .slider:before { transform: translateX(20px); }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SICOM - Simulador de Circuitos</title>
 
-        .circuit-line::before {
-            content: '';
-            position: absolute;
-            left: -20px;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            border-left: 2px dashed #e2e8f0;
-        }
-        .node-active { border-color: #1e293b; background: #f8fafc; }
-        .node-dot {
-            position: absolute;
-            left: -26px;
-            top: 22px;
-            width: 14px;
-            height: 14px;
-            background: #1e293b;
-            border: 3px solid white;
-            border-radius: 50%;
-            z-index: 10;
-        }
-    </style>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+
+<style>
+body { font-family: Arial; }
+
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+
+.slider {
+    position: absolute; cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #cbd5e1; border-radius: 24px;
+}
+
+.slider:before {
+    position: absolute; content: "";
+    height: 18px; width: 18px;
+    left: 3px; bottom: 3px;
+    background-color: white; border-radius: 50%;
+}
+
+input:checked + .slider { background-color: #1e293b; }
+input:checked + .slider:before { transform: translateX(20px); }
+
+.node { padding: 10px; margin: 5px; border: 1px solid #ccc; cursor: pointer; }
+.error { color: red; }
+</style>
 </head>
-<body class="bg-slate-100 min-h-screen p-4 md:p-12">
 
-    <div class="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        <!-- PAINEL DE CONTROLE (ESQUERDA) -->
-        <div class="lg:col-span-5 flex flex-col gap-6">
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-                <div class="flex items-center gap-3 mb-6">
-                    <i data-lucide="settings-2" class="text-slate-900"></i>
-                    <h2 class="text-lg font-extrabold text-slate-900 uppercase tracking-tight">Mesa de Controle</h2>
-                </div>
+<body class="p-6">
 
-                <div class="mb-8">
-                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Carregar Matriz JSON</label>
-                    <label class="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-slate-300 rounded-2xl cursor-pointer hover:bg-slate-50 transition-colors">
-                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
-                            <i data-lucide="upload-cloud" class="text-slate-400 mb-2"></i>
-                            <p class="text-xs text-slate-500">Clique para selecionar o arquivo</p>
-                        </div>
-                        <input type="file" id="jsonInput" class="hidden" accept=".json" />
-                    </label>
-                </div>
+<h2 class="font-bold mb-4">Simulador de Workflow</h2>
 
-                <div class="space-y-4">
-                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Interruptores de Hierarquia</label>
-                    
-                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Operacional 0</span>
-                        <label class="switch"><input type="checkbox" class="level-switch" data-level="operacional_0" checked><span class="slider"></span></label>
-                    </div>
-                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Operacional 1</span>
-                        <label class="switch"><input type="checkbox" class="level-switch" data-level="operacional_1" checked><span class="slider"></span></label>
-                    </div>
-                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Tático 0</span>
-                        <label class="switch"><input type="checkbox" class="level-switch" data-level="tatico_0" checked><span class="slider"></span></label>
-                    </div>
-                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Tático 1</span>
-                        <label class="switch"><input type="checkbox" class="level-switch" data-level="tatico_1" checked><span class="slider"></span></label>
-                    </div>
-                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Estratégico 0</span>
-                        <label class="switch"><input type="checkbox" class="level-switch" data-level="estrategico_0" checked><span class="slider"></span></label>
-                    </div>
-                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Estratégico 1</span>
-                        <label class="switch"><input type="checkbox" class="level-switch" data-level="estrategico_1" checked><span class="slider"></span></label>
-                    </div>
-                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                        <span class="text-xs font-bold text-slate-700">Estratégico 2</span>
-                        <label class="switch"><input type="checkbox" class="level-switch" data-level="estrategico_2" checked><span class="slider"></span></label>
-                    </div>
-                </div>
+<input type="file" id="jsonInput" accept=".json"><br><br>
 
-                <div class="mt-8">
-                    <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Selecionar Circuito</label>
-                    <select id="processSelect" class="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700 focus:ring-2 focus:ring-slate-900">
-                        <option value="">Aguardando JSON...</option>
-                    </select>
-                </div>
-            </div>
+<select id="processSelect">
+<option value="">Carregue o JSON</option>
+</select>
 
-            <div id="errorDisplay" class="hidden bg-red-50 border border-red-100 p-6 rounded-3xl flex gap-4 items-start">
-                <i data-lucide="shield-alert" class="text-red-600 shrink-0"></i>
-                <div>
-                    <h4 class="text-xs font-black text-red-900 uppercase">Erro de Contrato</h4>
-                    <p id="errorMessage" class="text-xs text-red-700 mt-1 leading-relaxed"></p>
-                </div>
-            </div>
-        </div>
+<div id="errorDisplay" class="error mt-3"></div>
 
-        <!-- VISUALIZAÇÃO DO CIRCUITO (DIREITA) -->
-        <div class="lg:col-span-7">
-            <div class="bg-white p-10 rounded-3xl shadow-sm border border-slate-200 min-h-[600px]">
-                <div class="flex items-center justify-between mb-10">
-                    <div class="flex items-center gap-3">
-                        <i data-lucide="route" class="text-slate-900"></i>
-                        <h2 class="text-lg font-extrabold text-slate-900 uppercase tracking-tight">Circuito de Tramitação</h2>
-                    </div>
-                    <div id="statusBadge" class="text-[10px] font-black px-3 py-1 bg-slate-100 rounded-full text-slate-400 uppercase">Inativo</div>
-                </div>
+<div id="output" class="mt-4"></div>
 
-                <div id="circuitOutput" class="relative ml-6 space-y-6">
-                    <div class="flex flex-col items-center justify-center py-20 text-slate-300">
-                        <i data-lucide="activity" size="48" class="mb-4 opacity-20"></i>
-                        <p class="text-sm font-medium opacity-50">Carregue a matriz para visualizar o fluxo</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+<script>
+const UI = {
+    jsonInput: document.getElementById('jsonInput'),
+    processSelect: document.getElementById('processSelect'),
+    output: document.getElementById('output'),
+    error: document.getElementById('errorDisplay')
+};
 
-    <script>
-        const UI = {
-            jsonInput: document.getElementById('jsonInput'),
-            processSelect: document.getElementById('processSelect'),
-            switches: document.querySelectorAll('.level-switch'),
-            circuitOutput: document.getElementById('circuitOutput'),
-            errorDisplay: document.getElementById('errorDisplay'),
-            errorMessage: document.getElementById('errorMessage'),
-            statusBadge: document.getElementById('statusBadge')
-        };
+let workflowData = null;
 
-        let workflowData = null;
-        // Ordem hierárquica completa baseada no JSON
-        const HIERARQUIA = ['operacional_0', 'operacional_1', 'tatico_0', 'tatico_1', 'estrategico_0', 'estrategico_1', 'estrategico_2'];
+const HIERARQUIA = [
+    'operacional_0','operacional_1',
+    'tatico_0','tatico_1',
+    'estrategico_0','estrategico_1','estrategico_2'
+];
 
-        const Engine = {
-            getSwitchesState() {
-                const state = {};
-                UI.switches.forEach(s => state[s.dataset.level] = s.checked);
-                return state;
-            },
+const Engine = {
 
-            mapToStatus(papel, acao) {
-                // Mapeia papel e ação para um status legível
-                if (papel === 'drh') return `DRH_${acao.toUpperCase()}`;
-                return `${papel.toUpperCase()}_${acao.toUpperCase()}`;
-            },
+    mapToStatus(papel, acao) {
+        if (papel === 'drh') return `DRH_${acao.toUpperCase()}`;
+        return `${papel.toUpperCase()}_${acao.toUpperCase()}`;
+    },
 
-            resolverResponsavel(papelAlvo) {
-                const state = this.getSwitchesState();
-                
-                // Se o alvo for o DRH, ele é sempre o responsável
-                if (papelAlvo === 'drh') return 'drh';
+    resolverResponsavel(papel) {
+        if (papel === 'drh') return 'drh';
 
-                const startPos = HIERARQUIA.indexOf(papelAlvo);
-                if (startPos === -1) return papelAlvo; // Se não estiver na hierarquia (ex: drh), retorna ele mesmo
+        const pos = HIERARQUIA.indexOf(papel);
+        if (pos === -1) throw new Error(`Papel inválido: ${papel}`);
 
-                // Procura o próximo gestor ativo na hierarquia a partir do alvo
-                for (let i = startPos; i < HIERARQUIA.length; i++) {
-                    if (state[HIERARQUIA[i]]) return HIERARQUIA[i];
+        for (let i = pos; i < HIERARQUIA.length; i++) {
+            return HIERARQUIA[i]; // simplificado (sempre existe)
+        }
+        return null;
+    },
+
+    getNextStatus(processo, idx, depth = 0) {
+
+        if (depth > 10) throw new Error("Loop detectado");
+
+        const etapas = processo.etapas;
+        const nextIdx = idx + 1;
+
+        if (nextIdx >= etapas.length) return null;
+
+        const etapa = etapas[nextIdx];
+        const papel = etapa.papel;
+        const acao = etapa.acao;
+
+        if (papel !== 'drh') {
+            const resp = this.resolverResponsavel(papel);
+            if (!resp) throw new Error(`Sem responsável para ${papel}`);
+
+            if (acao === 'da_ciencia') {
+                const prox = etapas.slice(nextIdx + 1).find(e => e.acao === 'decide');
+                if (prox && this.resolverResponsavel(prox.papel) === resp) {
+                    return this.getNextStatus(processo, nextIdx, depth + 1);
                 }
-                return null;
-            },
-
-            getNextStatus(processo, currentEtapaIdx) {
-                const etapas = processo.etapas;
-                const nextIdx = currentEtapaIdx + 1;
-
-                if (nextIdx >= etapas.length) return null; // Fim do fluxo
-
-                const etapa = etapas[nextIdx];
-                const papelAlvo = etapa.papel;
-                const acao = etapa.acao;
-
-                // Se o papel não for DRH, verifica quem assume
-                if (papelAlvo !== 'drh') {
-                    const respAtual = this.resolverResponsavel(papelAlvo);
-                    if (!respAtual) throw new Error(`Não há gestores ativos para assumir o nível '${papelAlvo}' ou superiores.`);
-                    
-                    // Lógica de supressão: se a ação for 'da_ciencia' e o mesmo gestor 'decide' na próxima etapa, pula a ciência
-                    if (acao === 'da_ciencia') {
-                        const proximaDecisao = etapas.slice(nextIdx + 1).find(e => e.acao === 'decide');
-                        if (proximaDecisao && this.resolverResponsavel(proximaDecisao.papel) === respAtual) {
-                            return this.getNextStatus(processo, nextIdx);
-                        }
-                    }
-                }
-
-                return { idx: nextIdx, status: this.mapToStatus(papelAlvo, acao) };
             }
-        };
-
-        UI.jsonInput.onchange = (e) => {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                try {
-                    // Adaptado para ler array direto ou objeto com .processos
-                    const raw = JSON.parse(ev.target.result);
-                    workflowData = Array.isArray(raw) ? raw : (raw.processos || []);
-                    
-                    UI.processSelect.innerHTML = '<option value="">Selecione um processo...</option>';
-                    workflowData.forEach(p => {
-                        const opt = document.createElement('option');
-                        opt.value = p.id; 
-                        opt.textContent = `${p.id} - ${p.processo}`;
-                        UI.processSelect.appendChild(opt);
-                    });
-                    renderCircuit();
-                } catch (err) {
-                    alert("Erro ao ler JSON: " + err.message);
-                }
-            };
-            reader.readAsText(e.target.files[0]);
-        };
-
-        function renderCircuit(activeIndex = 0) {
-            const procId = UI.processSelect.value;
-            if (!workflowData || !procId) return;
-
-            UI.circuitOutput.innerHTML = '';
-            UI.errorDisplay.classList.add('hidden');
-            UI.statusBadge.textContent = 'Ativo';
-            UI.statusBadge.classList.replace('text-slate-400', 'text-green-600');
-
-            const processo = workflowData.find(p => String(p.id) === String(procId));
-            if (!processo) return;
-
-            let currentIdx = -1;
-            let safety = 0;
-
-            try {
-                while (safety < 30) {
-                    const nextEtapa = Engine.getNextStatus(processo, currentIdx);
-                    if (!nextEtapa) {
-                        // Nó final (Homologação automática após a última etapa)
-                        addNode('FIM', 'HOMOLOGADO', 'Processo concluído com sucesso.', activeIndex === 999);
-                        break;
-                    }
-
-                    const etapa = processo.etapas[nextEtapa.idx];
-                    const respEfetivo = Engine.resolverResponsavel(etapa.papel);
-
-                    addNode(
-                        etapa.acao.toUpperCase(),
-                        nextEtapa.status.replace(/_/g, ' '),
-                        `Responsável: ${respEfetivo.toUpperCase()}`,
-                        activeIndex === nextEtapa.idx,
-                        nextEtapa.idx
-                    );
-
-                    currentIdx = nextEtapa.idx;
-                    safety++;
-                }
-            } catch (err) {
-                UI.errorDisplay.classList.remove('hidden');
-                UI.errorMessage.textContent = err.message;
-            }
-
-            lucide.createIcons();
         }
 
-        function addNode(tag, title, desc, active, idx) {
-            const div = document.createElement('div');
-            div.className = `circuit-line relative pl-8 pb-4 group`;
-            div.onclick = () => renderCircuit(idx);
-            
-            const isFim = tag === 'FIM';
-            const icon = isFim ? 'check-circle' : (active ? 'play-circle' : 'circle');
+        return {
+            idx: nextIdx,
+            status: this.mapToStatus(papel, acao)
+        };
+    }
+};
 
-            div.innerHTML = `
-                <div class="node-dot ${active ? 'bg-slate-900 scale-125' : (isFim ? 'bg-green-500' : 'bg-slate-200')}"></div>
-                <div class="p-5 rounded-2xl border transition-all cursor-pointer hover:translate-x-2 ${active ? 'node-active ring-4 ring-slate-100 border-slate-900' : 'border-slate-100 bg-white'}">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black px-2 py-0.5 rounded bg-slate-100 text-slate-500 uppercase tracking-widest">${tag}</span>
-                        <i data-lucide="${icon}" size="14" class="${active ? 'text-slate-900' : 'text-slate-300'}"></i>
-                    </div>
-                    <h3 class="text-xs font-extrabold text-slate-900">${title}</h3>
-                    <p class="text-[10px] text-slate-400 mt-1 font-medium">${desc}</p>
-                </div>
-            `;
-            UI.circuitOutput.appendChild(div);
+UI.jsonInput.onchange = (e) => {
+
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = (ev) => {
+        try {
+            const raw = JSON.parse(ev.target.result);
+
+            if (Array.isArray(raw)) {
+                workflowData = raw;
+            } else if (raw.processos && Array.isArray(raw.processos)) {
+                workflowData = raw.processos;
+            } else {
+                throw new Error("JSON inválido");
+            }
+
+            if (!workflowData.length) {
+                throw new Error("Nenhum processo encontrado");
+            }
+
+            UI.processSelect.innerHTML = '<option value="">Selecione</option>';
+
+            workflowData.forEach(p => {
+                if (!p.id) return;
+
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.processo || `Processo ${p.id}`;
+                UI.processSelect.appendChild(opt);
+            });
+
+            UI.error.textContent = '';
+
+        } catch (err) {
+            workflowData = null;
+            UI.processSelect.innerHTML = '<option>Erro</option>';
+            UI.error.textContent = err.message;
+        }
+    };
+
+    reader.readAsText(file);
+};
+
+UI.processSelect.onchange = () => {
+
+    const id = UI.processSelect.value;
+    if (!id) return;
+
+    const proc = workflowData.find(p => String(p.id) === id);
+
+    UI.output.innerHTML = '';
+
+    let idx = -1;
+    let safety = 0;
+
+    try {
+
+        while (safety < 20) {
+
+            const next = Engine.getNextStatus(proc, idx);
+
+            if (!next) {
+                UI.output.innerHTML += `<div class="node">FIM</div>`;
+                break;
+            }
+
+            UI.output.innerHTML += `<div class="node">${next.status}</div>`;
+
+            idx = next.idx;
+            safety++;
         }
 
-        UI.processSelect.onchange = () => renderCircuit();
-        UI.switches.forEach(s => s.onchange = () => renderCircuit());
-        lucide.createIcons();
-    </script>
+    } catch (err) {
+        UI.error.textContent = err.message;
+    }
+};
+</script>
+
 </body>
 </html>
