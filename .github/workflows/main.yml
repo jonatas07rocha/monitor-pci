@@ -1,0 +1,36 @@
+name: Monitor de Concursos
+on:
+  schedule:
+    - cron: '0 * * * *' # Roda automaticamente a cada hora cheia
+  workflow_dispatch: # Permite que você rode manualmente clicando em um botão
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar Código
+        uses: actions/checkout@v4
+
+      - name: Instalar Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Restaurar Cache (Memória do Bot)
+        uses: actions/cache@v3
+        with:
+          path: pci_cache.json
+          key: pci-cache-${{ github.run_id }}
+          restore-keys: |
+            pci-cache-
+
+      - name: Executar Script
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: bun monitor.js
+
+      - name: Salvar Cache Atualizado
+        if: always()
+        uses: actions/cache@v3
+        with:
+          path: pci_cache.json
+          key: pci-cache-${{ github.run_id }}
