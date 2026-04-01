@@ -1,96 +1,88 @@
 /**
- * MONITOR DE CONCURSOS - PSICOLOGIA & ADMINISTRAÇÃO
- * Versão Cloud (GitHub Actions + Bun)
+ * MONITOR DE CONCURSOS - PSICOLOGIA
+ * Rodando com Bun.sh via GitHub Actions
  */
 
-const TOKEN = process.env.TELEGRAM_TOKEN;
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-
-// Agora monitoramos duas URLs distintas
-const URLS = [
-  "https://www.pciconcursos.com.br/cargos/psicologo",
-  "https://www.pciconcursos.com.br/cargos/administrador"
-];
-
+const TOKEN = '8253608352:AAFjouw_xwcTX3KH0-GSbIRqTMMcyOgZMUI';
+const CHAT_ID = '8045179125';
 const CACHE_FILE = "pci_cache.json";
+const URL_FONTE = "https://www.pciconcursos.com.br/cargos/psicologo";
+const TERMO_BUSCA = "PSICÓLOGO";
 
-const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
-             "MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SE","TO"];
+const UFS_EXCLUIR = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
+                     "MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SE","TO"];
 
 async function buscarConcursos() {
-  console.log(`[${new Date().toLocaleString('pt-BR')}] Iniciando busca multicarreira...`);
+  console.log(`[${new Date().toLocaleTimeString('pt-BR')}] Iniciando varredura para Psicologia...`);
   
-  if (!TOKEN || !CHAT_ID) {
-    console.error("ERRO: Credenciais não configuradas.");
-    return;
-  }
-
   try {
-    let resultadosGerais = [];
+    const response = await fetch(URL_FONTE);
+    const html = await response.text();
+    
+    // Captura links de notícias (editais reais) que apontam para a estrutura de notícias do PCI
+    const regexNoticia = /<a[^>]+href="(https:\/\/www\.pciconcursos\.com\.br\/noticias\/[^"]+)"[^>]*>(.*?)<\/a>/g;
+    
+    let todosResultados = [];
+    let match;
 
-    // Percorre cada uma das URLs configuradas
-    for (const url of URLS) {
-      const response = await fetch(url);
-      const html = await response.text();
+    while ((match = regexNoticia.exec(html)) !== null) {
+      const urlEdital = match[1];
+      const orgaoRaw = match[2].replace(/<[^>]+>/g, "").trim();
       
-      const blocos = html.split('<ul class="link-d">');
+      // Filtro de segurança contra links de navegação
+      if (orgaoRaw.length < 5 || orgaoRaw.includes("Próxima")) continue;
 
-      for (let i = 1; i < blocos.length; i++) {
-        let bloco = blocos[i];
-        let orgaoMatch = bloco.match(/class="noticia_desc[^"]*">(.*?)<\/a>/);
-        let orgao = orgaoMatch ? orgaoMatch[1].replace(/\s+/g, " ").trim() : null;
+      // Extrai o contexto (600 caracteres) para validar cargo e UF
+      const indexPos = html.indexOf(match[0]);
+      const contexto = html.substring(indexPos, indexPos + 600).replace(/<[^>]+>/g, " ").toUpperCase();
 
-        let cargoMatch = bloco.match(/<ul class="link-i">[\s\S]*?<a[^>]*>(.*?)<\/a>/);
-        let cargo = cargoMatch 
-          ? cargoMatch[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() 
-          : null;
+      const infoFiltro = (orgaoRaw + " " + contexto).toUpperCase();
 
-        if (orgao && cargo) resultadosGerais.push({ orgao, cargo });
+      // Regras: Deve conter PSICÓLOGO e (ser de SP ou não ter UF de outro estado)
+      const contemCargo = infoFiltro.includes(TERMO_BUSCA);
+      const ehSP = infoFiltro.includes("- SP") || infoFiltro.includes("SÃO PAULO");
+      const ehNacional = !UFS_EXCLUIR.some(uf => infoFiltro.includes("- " + uf));
+
+      if (contemCargo && (ehSP || ehNacional)) {
+        todosResultados.push({ 
+          orgao: orgaoRaw, 
+          url: urlEdital 
+        });
       }
     }
 
-    // Filtro atualizado para incluir Administrador
-    let filtrados = resultadosGerais.filter(item => {
-      const upper = (item.orgao + " " + item.cargo).toUpperCase();
-      
-      // Verifica se é um dos cargos desejados
-      const ehCargoAlvo = upper.includes("PSICÓLOGO") || upper.includes("ADMINISTRADOR");
-      if (!ehCargoAlvo) return false;
+    // Remove duplicatas de URLs
+    const unicos = todosResultados.filter((v, i, a) => a.findIndex(t => t.url === v.url) === i);
 
-      // Mantém se for SP ou se não tiver UF específica (Nacional)
-      if (upper.includes(" - SP")) return true;
-      return !UFS.some(uf => upper.includes(" - " + uf));
-    });
-
-    // Gestão de Cache
+    // Gerenciamento de Cache (Persistência no GitHub)
     let antigos = [];
     const file = Bun.file(CACHE_FILE);
     if (await file.exists()) {
       antigos = await file.json();
     }
 
-    const novos = filtrados.filter(n => 
-      !antigos.some(a => a.orgao === n.orgao && a.cargo === n.cargo)
-    );
+    const novos = unicos.filter(n => !antigos.some(a => a.url === n.url));
 
     if (novos.length > 0) {
       await enviarParaTelegram(novos);
     } else {
-      console.log("Nenhum novo edital de Psicologia ou Administração.");
+      console.log("🏁 Tudo atualizado. Nenhuma vaga nova de Psicologia em SP/Nacional.");
     }
 
-    await Bun.write(CACHE_FILE, JSON.stringify(filtrados, null, 2));
+    // Atualiza o cache
+    await Bun.write(CACHE_FILE, JSON.stringify(unicos, null, 2));
 
   } catch (error) {
-    console.error("Erro na execução:", error.message);
+    console.error("❌ Erro no monitor de Psicologia:", error.message);
   }
 }
 
 async function enviarParaTelegram(lista) {
-  let mensagem = "<b>🔔 Novas Vagas Detectadas!</b>\n\n";
+  let mensagem = "<b>🔔 Novos Concursos: Psicologia</b>\n\n";
   
   lista.forEach(item => {
-    mensagem += `🏛️ <b>${item.orgao}</b>\n👉 ${item.cargo}\n\n`;
+    mensagem += `🏛️ <b>${item.orgao}</b>\n`;
+    mensagem += `🔗 <a href="${item.url}">Ver detalhes no PCI</a>\n\n`;
   });
 
   try {
@@ -104,10 +96,11 @@ async function enviarParaTelegram(lista) {
         disable_web_page_preview: true
       })
     });
-    console.log(`${lista.length} notificações enviadas.`);
+    console.log(`🚀 ${lista.length} alerta(s) de Psicologia enviado(s)!`);
   } catch (e) {
     console.error("Erro Telegram:", e.message);
   }
 }
 
+// Execução imediata (necessário para o GitHub Actions)
 buscarConcursos();
